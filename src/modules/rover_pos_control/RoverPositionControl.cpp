@@ -150,6 +150,28 @@ RoverPositionControl::vehicle_attitude_poll()
 	}
 }
 
+void
+RoverPositionControl::rates_setpoint_poll()
+{
+	bool rates_updated;
+	orb_check(_rates_sp_sub, &rates_updated);
+
+	if (rates_updated) {
+		orb_copy(ORB_ID(vehicle_rates_setpoint), _rates_sp_sub, &_rate_sp);
+	}
+}
+
+void
+RoverPositionControl::vehicle_rates_poll()
+{
+	bool rates_updated;
+	orb_check(_vehicle_rates_sub, &rates_updated);
+
+	if (rates_updated) {
+		orb_copy(ORB_ID(vehicle_angular_velocity), _vehicle_rates_sub, &_vehicle_rate);
+	}
+}
+
 bool
 RoverPositionControl::control_position(const matrix::Vector2f &current_position,
 				       const matrix::Vector3f &ground_speed, const position_setpoint_triplet_s &pos_sp_triplet)
@@ -350,6 +372,28 @@ RoverPositionControl::control_attitude(const vehicle_attitude_s &att, const vehi
 }
 
 void
+RoverPositionControl::control_rates(const vehicle_angular_velocity_s &rates, const vehicle_rates_setpoint_s &rates_sp)
+{
+	//TODO: Add PID for rate controls
+	PX4_INFO("controlling rates");
+	// float control_effort = rates_sp.yaw; //Should I make control effort a global?
+	// control_effort = math::constrain(control_effort, -1.0f, 1.0f);
+
+	// const float control_throttle = math::constrain(rates_sp.thrust_body[0], -1.0f, 1.0f);
+
+	// if (control_throttle >= 0.0f) {
+	// 	_act_controls.control[actuator_controls_s::INDEX_YAW] = control_effort;
+
+	// } else {
+	// 	// reverse steering, if driving backwards
+	// 	_act_controls.control[actuator_controls_s::INDEX_YAW] = -control_effort;
+	// }
+
+	// _act_controls.control[actuator_controls_s::INDEX_THROTTLE] = control_throttle;
+
+}
+
+void
 RoverPositionControl::run()
 {
 	_control_mode_sub = orb_subscribe(ORB_ID(vehicle_control_mode));
@@ -360,6 +404,7 @@ RoverPositionControl::run()
 	_att_sp_sub = orb_subscribe(ORB_ID(vehicle_attitude_setpoint));
 
 	_vehicle_attitude_sub = orb_subscribe(ORB_ID(vehicle_attitude));
+	_vehicle_rates_sub = orb_subscribe(ORB_ID(vehicle_angular_velocity));
 	_sensor_combined_sub = orb_subscribe(ORB_ID(sensor_combined));
 
 	/* rate limit control mode updates to 5Hz */
@@ -398,6 +443,7 @@ RoverPositionControl::run()
 		/* check vehicle control mode for changes to publication state */
 		vehicle_control_mode_poll();
 		attitude_setpoint_poll();
+		rates_setpoint_poll();
 		//manual_control_setpoint_poll();
 
 		_vehicle_acceleration_sub.update();
@@ -479,12 +525,20 @@ RoverPositionControl::run()
 		if (fds[3].revents & POLLIN) {
 
 			vehicle_attitude_poll();
+			vehicle_rates_poll();
 
 			if (!manual_mode && _control_mode.flag_control_attitude_enabled
 			    && !_control_mode.flag_control_position_enabled
 			    && !_control_mode.flag_control_velocity_enabled) {
 
 				control_attitude(_vehicle_att, _att_sp);
+
+			} else if (!manual_mode && _control_mode.flag_control_rates_enabled
+			    && !_control_mode.flag_control_attitude_enabled
+			    && !_control_mode.flag_control_position_enabled
+			    && !_control_mode.flag_control_velocity_enabled) {
+
+				control_rates(_vehicle_rate, _rate_sp);
 
 			}
 
@@ -529,7 +583,9 @@ RoverPositionControl::run()
 	orb_unsubscribe(_local_pos_sub);
 	orb_unsubscribe(_manual_control_sub);
 	orb_unsubscribe(_pos_sp_triplet_sub);
+	orb_unsubscribe(_rates_sp_sub);
 	orb_unsubscribe(_vehicle_attitude_sub);
+	orb_unsubscribe(_vehicle_rates_sub);
 	orb_unsubscribe(_sensor_combined_sub);
 
 	warnx("exiting.\n");
